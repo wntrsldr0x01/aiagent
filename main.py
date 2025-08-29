@@ -33,7 +33,7 @@ if len(sys.argv) > 1:
     types.Content(role ='user', parts=[types.Part(text=user_prompt)]),
     ]
 
-    available_functions = types.Tool(
+    available_functions = types.Tool(    #for every tool there should be an shcema 
         function_declarations = [
             schema_get_files_info,
             schema_run_python_file,
@@ -42,37 +42,33 @@ if len(sys.argv) > 1:
         ]
     )
 
-    response = client.models.generate_content(
-        model = 'gemini-2.0-flash-001', 
-        contents=messages,
-        config = types.GenerateContentConfig(
-            tools = [available_functions],
-            system_instruction=system_prompt
+    for i in range(0,20):         #running the agent in a loop (with an upper limit of max 20 times)
+        try:
+            response = client.models.generate_content(
+                model = 'gemini-2.0-flash-001', 
+                contents=messages,
+                config = types.GenerateContentConfig(
+                    tools = [available_functions],      
+                    system_instruction=system_prompt
+                    )
             )
-    )
-    
-    
+            for candidate in response.candidates:
+                    if candidate.content.pasts:
+                        function_call_part = response.function_calls[0]    
+                        print(f"Calling function: {function_call_part.name}({function_call_part.args})") #name of the function and argument passed
+                        call_result = call_function(function_call_part) #actually calling the functions
 
-    if response.function_calls:
-        function_call_part = response.function_calls[0]    
-        print(f"Calling function: {function_call_part.name}({function_call_part.args})")
-        call_result = call_function(function_call_part)
+                    if call_result.parts[0].function_response.response:
+                        mess_func = types.Content(role ='user', parts=[types.Part(function_response=call_result.parts[0].function_response)])
+                        messages.append(mess_func)
 
-        if call_result.parts[0].function_response.response:
-            if len(sys.argv) > 2 and sys.argv[2] == "--verbose":
-                print(call_result.parts[0].function_response.response)
-        else:
-            raise Exception 
+                        if len(sys.argv) > 2 and sys.argv[2] == "--verbose":
+                            print(call_result.parts[0].function_response.response)
+                    else:
+                        raise Exception 
+                    
+                    messages.append(candidate.content) # I am confused between candidate and parts bc
 
-    
-    if len(sys.argv) > 2 and sys.argv[2] == "--verbose" :
-        usage = response.usage_metadata
-        print(f"User prompt: {user_prompt}")
-        print(f"Prompt tokens: {usage.prompt_token_count}")
-        print(f"Response tokens: {usage.candidates_tokens_details[0].token_count}")
-    
-    print(response.text)
 
-else:
-    print("please provide a prompt")
-    sys.exit(1)
+        except Exception as e:
+            print(f"Error: {e}")
